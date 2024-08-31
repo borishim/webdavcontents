@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 import base64
 import io
 from pathlib import Path
@@ -160,34 +160,27 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
-    def save(self, model_asdict, path):
-        model = WebdavFile(**model_asdict)
+    def save(self, model: Dict[str, Any], path: str):
+        pymodel = WebdavFile(**model)
         raise NotImplementedError
     
-    def delete_file(self, path):
+    def delete_file(self, path: str):
         """Delete file at path."""
-
         if not self.allow_hidden and self.is_hidden(path):
             raise web.HTTPError(400, f"Cannot delete file or directory {path!r}")
-
-        four_o_four = "file or directory does not exist: %r" % path
-
         try:
             self._client.remove(path)
         except Exception as exc:
             raise web.HTTPError(400, f"Cannot delete file or directory {path!r}") from exc
 
-    def rename_file(self, old_path, new_path):
+    def rename_file(self, old_path: str, new_path: str):
         """Rename a file."""
         if new_path == old_path:
             return
-
-
         if not self.allow_hidden and (
             self.is_hidden(old_path) or self.is_hidden(new_path)
         ):
             raise web.HTTPError(400, f"Cannot rename file or directory {old_path!r}")
-
         try:
             self._client.move(old_path, new_path)
         except Exception as exc:
