@@ -5,6 +5,7 @@ import base64
 import io
 from pathlib import Path
 
+import nbformat
 from jupyter_server import _tz as tz
 from jupyter_server.services.contents.manager import ContentsManager
 from jupyter_server.services.contents.fileio import FileManagerMixin
@@ -53,7 +54,22 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         super().__init__(*args, **kwargs)
         self._client = Client(self.base_url, auth=(self.user_id, self.password))
 
-    def _fill_content(self, model, format, require_hash):
+    @staticmethod
+    def _convert_to_notebook(model: WebdavFile, as_version=4, capture_validation_error=None) -> WebdavFile:
+        """Convert the content of a text file to the notebook content."""
+
+        assert model.format == "json"
+        try:
+            model.content = nbformat.reads(
+                model.content,
+                as_version=as_version,
+                capture_validation_error=capture_validation_error,
+            )
+            return model
+        except Exception as exc:
+            raise web.HTTPError(400, f"Unreadable Notebook: {model.path!r}") from exc
+
+    def _fill_content(self, model: WebdavFile, format, require_hash) -> WebdavFile:
         if model.type == "directory":
             model.format = "json"
             model.content = []
@@ -84,6 +100,8 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
             bytes_content = buf.getvalue() or b""
             if model.format == "text" or model.format == "json":
                 model.content = bytes_content.decode("utf-8")
+                if model.type == "notebook":
+                    model = self._convert_to_notebook(model)
             elif model.format == "base64":
                 model.content = base64.b64encode(bytes_content).decode("ascii")
             if require_hash:
@@ -175,7 +193,7 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         except Exception as exc:
             raise web.HTTPError(500, f"Unknown error renaming file: {old_path!r}") from exc
 
-    def file_exists(self, path):
+    def file_exists(self, path: str = "") -> bool:
         """Returns True if the file exists, else returns False.
 
         API-style wrapper for os.path.isfile
