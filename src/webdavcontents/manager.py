@@ -51,9 +51,47 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         self._client = Client(self.base_url, auth=(self.user_id, self.password))
-    
+
+    def _fill_content(self, model, format, require_hash):
+        if model.type == "directory":
+            model.format = "json"
+            model.content = []
+            for info in self._client.ls(model.path):
+                entry = WebdavFile(
+                    name=info["display_name"],
+                    path=info["name"],
+                    type=info["type"],
+                    created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                    last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                    mimetype=info["content_type"],
+                    size=info["content_length"],
+                )
+                entry = self._fill_content(entry, None, require_hash)
+                model.content.append(entry)
+        else:  # model type is file or notebook
+            if not format:
+                if model.type == "file":
+                    if model.mimetype.startswith("text/plain"):
+                        format = "text"
+                    elif model.mimetype.startswith("application/octet-stream"):
+                        format = "base64"
+                elif model.type == "notebook":
+                    format = "json"
+            model.format = format
+            buf = io.BytesIO()
+            self._client.download_fileobj(model.path, buf)
+            bytes_content = buf.getvalue() or b""
+            if model.format == "text" or model.format == "json":
+                model.content = bytes_content.decode("utf-8")
+            elif model.format == "base64":
+                model.content = base64.b64encode(bytes_content).decode("ascii")
+            if require_hash:
+                hash_info = self._get_hash(bytes_content)
+                model.hash = hash_info["hash"]
+                model.hash_algorithm = hash_info["hash_algorithm"]
+        return model
+
     def get(self, path, content=True, type=None, format=None, require_hash=False):
         """Takes a path for an entity and returns its model
 
@@ -98,47 +136,8 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
             size=info["content_length"],
         )
 
-        def fill_content(model, format, require_hash):
-            if model.type == "directory":
-                model.format = "json"
-                model.content = []
-                for info in self._client.ls(model.path):
-                    entry = WebdavFile(
-                        name=info["display_name"],
-                        path=info["name"],
-                        type=info["type"],
-                        created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                        last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                        mimetype=info["content_type"],
-                        size=info["content_length"],
-                    )
-                    entry = fill_content(entry, None, require_hash)
-                    model.content.append(entry)
-            else:  # model type is file or notebook
-                if not format:
-                    if model.type == "file":
-                        if model.mimetype.startswith("text/plain"):
-                            format = "text"
-                        elif model.mimetype.startswith("application/octet-stream"):
-                            format = "base64"
-                    elif model.type == "notebook":
-                        format = "json"
-                model.format = format
-                buf = io.BytesIO()
-                self._client.download_fileobj(model.path, buf)
-                bytes_content = buf.getvalue() or b""
-                if model.format == "text" or model.format == "json":
-                    model.content = bytes_content.decode("utf-8")
-                elif model.format == "base64":
-                    model.content = base64.b64encode(bytes_content).decode("ascii")
-                if require_hash:
-                    hash_info = self._get_hash(bytes_content)
-                    model.hash = hash_info["hash"]
-                    model.hash_algorithm = hash_info["hash_algorithm"]
-            return model
-
         if content:
-            model = fill_content(model, format, require_hash)
+            model = self._fill_content(model, format, require_hash)
 
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
