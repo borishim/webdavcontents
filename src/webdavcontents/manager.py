@@ -55,7 +55,7 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         self._client = Client(self.base_url, auth=(self.user_id, self.password))
 
     @staticmethod
-    def _convert_to_notebook(model: WebdavFile, as_version=4, capture_validation_error=None) -> WebdavFile:
+    def _convert_to_notebook(model: WebdavFile, as_version: int = 4, capture_validation_error: bool = None) -> WebdavFile:
         """Convert the content of a text file to the notebook content."""
 
         assert model.format == "json"
@@ -69,7 +69,7 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         except Exception as exc:
             raise web.HTTPError(400, f"Unreadable Notebook: {model.path!r}") from exc
 
-    def _fill_content(self, model: WebdavFile, format, require_hash) -> WebdavFile:
+    def _fill_content(self, model: WebdavFile, format: Optional[str], require_hash: bool) -> WebdavFile:
         if model.type == "directory":
             model.format = "json"
             model.content = []
@@ -110,7 +110,7 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
                 model.hash_algorithm = hash_info["hash_algorithm"]
         return model
 
-    def get(self, path, content=True, type=None, format=None, require_hash=False):
+    def get(self, path: str, content: bool = True, type: Optional[str] = None, format: Optional[str] = None, require_hash: bool = False):
         """Takes a path for an entity and returns its model
 
         Parameters
@@ -206,7 +206,7 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         except webdav4.client.ResourceNotFound:
             return False
 
-    def dir_exists(self, path):
+    def dir_exists(self, path: str) -> bool:
         """Does the API-style path refer to an extant directory?
 
         API-style wrapper for os.path.isdir
@@ -227,7 +227,7 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         except webdav4.client.ResourceNotFound:
             return False
 
-    def is_hidden(self, path):
+    def is_hidden(self, path: str) -> bool:
         """Does the API style path correspond to a hidden directory or file?
 
         Parameters
