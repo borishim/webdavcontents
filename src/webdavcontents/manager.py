@@ -85,10 +85,12 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         except webdav4.client.ResourceNotFound as exc:
             raise web.HTTPError(404, four_o_four) from exc
 
-        model_type = "notebook" if info["type"] == "file" and info["display_name"].endswith(".ipynb") else info["type"]
+        model_type = info["type"]
+        if model_type == "file" and info["display_name"].endswith(".ipynb"):
+            model_type = "notebook"
         model = WebdavFile(
             name=info["display_name"],
-            path=path,
+            path=info["name"],
             type=model_type,
             created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
             last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
@@ -96,8 +98,23 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
             size=info["content_length"],
         )
 
-        if content:
-            if model.type == "file" or model.type == "notebook":
+        def fill_content(model, format, require_hash):
+            if model.type == "directory":
+                model.format = "json"
+                model.content = []
+                for info in self._client.ls(model.path):
+                    entry = WebdavFile(
+                        name=info["display_name"],
+                        path=info["name"],
+                        type=info["type"],
+                        created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                        last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                        mimetype=info["content_type"],
+                        size=info["content_length"],
+                    )
+                    entry = fill_content(entry, None, require_hash)
+                    model.content.append(entry)
+            else:  # model type is file or notebook
                 if not format:
                     if model.type == "file":
                         if model.mimetype.startswith("text/plain"):
@@ -108,31 +125,21 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
                         format = "json"
                 model.format = format
                 buf = io.BytesIO()
-                self._client.download_fileobj(path, buf)
-                bytes_content = buf.getvalue()
+                self._client.download_fileobj(model.path, buf)
+                bytes_content = buf.getvalue() or b""
                 if model.format == "text" or model.format == "json":
                     model.content = bytes_content.decode("utf-8")
                 elif model.format == "base64":
                     model.content = base64.b64encode(bytes_content).decode("ascii")
-                if require_hash and bytes_content:
+                if require_hash:
                     hash_info = self._get_hash(bytes_content)
                     model.hash = hash_info["hash"]
                     model.hash_algorithm = hash_info["hash_algorithm"]
-            elif model.type == "directory":
-                model.format = "json"
-                model.content = []
-                for info in self._client.ls(model.path):
-                    model.content.append(
-                        WebdavFile(
-                            name=info["display_name"],
-                            path=path,
-                            type=info["type"],
-                            created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                            last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                            mimetype=info["content_type"],
-                            size=info["content_length"],
-                        )
-                    )
+            return model
+
+        if content:
+            model = fill_content(model, format, require_hash)
+
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
