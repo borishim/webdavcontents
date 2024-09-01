@@ -1,15 +1,15 @@
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 import base64
+import hashlib
 import io
-from pathlib import Path
 
 import nbformat
 from jupyter_server import _tz as tz
 from jupyter_server.services.contents.manager import ContentsManager
 from jupyter_server.services.contents.filecheckpoints import GenericFileCheckpoints
-from jupyter_server.services.contents.fileio import FileManagerMixin
 from tornado import web
 from traitlets import Unicode
 from webdav4.client import Client
@@ -32,7 +32,7 @@ class WebdavFile:
     hash_algorithm: Optional[str] = None
 
 
-class WebdavContentsManager(FileManagerMixin, ContentsManager):
+class WebdavContentsManager(ContentsManager):
 
     base_url = Unicode(
         "",
@@ -56,6 +56,12 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         allow_none=False,
         default_value="./",
     ).tag(config=True, env="JPYNB_WEBDAV_LOCAL_CHECKPOINT_ROOT_DIR")
+
+    hash_algorithm = Unicode(
+        help="WebDAV hash algorithm",
+        allow_none=False,
+        default_value="sha256",
+    ).tag(config=True, env="JPYNB_WEBDAV_HASH_ALGORITHM")
 
     def _checkpoints_class_default(self):
         return GenericFileCheckpoints
@@ -115,9 +121,10 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
             elif model.format == "base64":
                 model.content = base64.b64encode(bytes_content).decode("ascii")
             if require_hash:
-                hash_info = self._get_hash(bytes_content)
-                model.hash = hash_info["hash"]
-                model.hash_algorithm = hash_info["hash_algorithm"]
+                h = hashlib.new(self.hash_algorithm)
+                h.update(bytes_content)
+                model.hash = h.hexdigest()
+                model.hash_algorithm = self.hash_algorithm
         return model
 
     def get(self, path: str, content: bool = True, type: Optional[str] = None, format: Optional[str] = None, require_hash: bool = False):
