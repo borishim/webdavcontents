@@ -118,7 +118,10 @@ class WebdavContentsManager(ContentsManager):
                 self._client.download_fileobj(model.path, buf)
                 bytes_content = buf.getvalue()
             if model.format == "text" or model.format == "json":
-                model.content = bytes_content.decode("utf-8")
+                try:
+                    model.content = bytes_content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise web.HTTPError(400, "%s is not UTF-8 encoded" % model.path, reason="bad format") from exc
                 if model.type == "notebook":
                     model = self._convert_to_notebook(model)
             elif model.format == "base64":
