@@ -28,7 +28,7 @@ class WebdavFile:
     size: Optional[int]
     content: Union[str, List[Any], None] = None
     format: Optional[str] = None
-    writable: Optional[bool] = None
+    writable: bool = True
     hash: Optional[str] = None
     hash_algorithm: Optional[str] = None
 
@@ -299,7 +299,7 @@ class WebdavContentsManager(ContentsManager):
         if not self.allow_hidden and (self.is_hidden(old_path) or self.is_hidden(new_path)):
             raise web.HTTPError(400, f"Cannot rename file or directory {old_path!r}")
         try:
-            self._client.move(old_path, new_path)
+            self._client.move(old_path, new_path, overwrite=True)
         except Exception as exc:
             raise web.HTTPError(500, f"Unknown error renaming file: {old_path!r}") from exc
 
