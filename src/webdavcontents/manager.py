@@ -8,6 +8,7 @@ from pathlib import Path
 import nbformat
 from jupyter_server import _tz as tz
 from jupyter_server.services.contents.manager import ContentsManager
+from jupyter_server.services.contents.filecheckpoints import GenericFileCheckpoints
 from jupyter_server.services.contents.fileio import FileManagerMixin
 from tornado import web
 from traitlets import Unicode
@@ -49,6 +50,15 @@ class WebdavContentsManager(FileManagerMixin, ContentsManager):
         allow_none=True,
         default_value=None,
     ).tag(config=True, env="JPYNB_WEBDAV_PASSWORD")
+
+    root_dir = Unicode(
+        help="WebDAV local root directory for the checkpoint",
+        allow_none=False,
+        default_value="./",
+    ).tag(config=True, env="JPYNB_WEBDAV_LOCAL_CHECKPOINT_ROOT_DIR")
+
+    def _checkpoints_class_default(self):
+        return GenericFileCheckpoints
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
