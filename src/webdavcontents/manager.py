@@ -88,44 +88,51 @@ class WebdavContentsManager(ContentsManager):
         except Exception as exc:
             raise web.HTTPError(400, f"Unreadable Notebook: {model.path!r}") from exc
 
-    def _fill_content(self, model: WebdavFile, format: Optional[str], require_hash: bool) -> WebdavFile:
+    def _fill_content_hash(
+        self, model: WebdavFile, format: Optional[str], require_content: bool, require_hash: bool
+    ) -> WebdavFile:
         if model.type == "directory":
-            model.format = "json"
+            model.format = None
             model.content = []
-            for info in self._client.ls(model.path):
-                entry = WebdavFile(
-                    name=info["display_name"],
-                    path=info["name"],
-                    type=info["type"],
-                    created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                    last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                    mimetype=info["content_type"],
-                    size=info["content_length"],
-                )
-                entry = self._fill_content(entry, None, require_hash)
-                model.content.append(entry)
-        else:  # model type is file or notebook
-            if not format:
-                if model.type == "file":
-                    if model.mimetype.startswith("text/plain"):
-                        format = "text"
-                    elif model.mimetype.startswith("application/octet-stream"):
-                        format = "base64"
-                elif model.type == "notebook":
+            if require_content:
+                if not format:
                     format = "json"
-            model.format = format
+                model.format = format
+                for info in self._client.ls(model.path):
+                    entry = WebdavFile(
+                        name=info["display_name"],
+                        path=info["name"],
+                        type=info["type"],
+                        created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                        last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                        mimetype=info["content_type"],
+                        size=info["content_length"],
+                    )
+                    entry = self._fill_content_hash(entry, None, False, False)
+                    model.content.append(entry)
+        else:  # model type is file or notebook
             with io.BytesIO() as buf:
                 self._client.download_fileobj(model.path, buf)
                 bytes_content = buf.getvalue()
-            if model.format == "text" or model.format == "json":
-                try:
-                    model.content = bytes_content.decode("utf-8")
-                except UnicodeDecodeError as exc:
-                    raise web.HTTPError(400, "%s is not UTF-8 encoded" % model.path, reason="bad format") from exc
-                if model.type == "notebook":
-                    model = self._convert_to_notebook(model)
-            elif model.format == "base64":
-                model.content = base64.encodebytes(bytes_content).decode("ascii")
+            if require_content:
+                if not format:
+                    if model.type == "file":
+                        if model.mimetype.startswith("text/plain"):
+                            format = "text"
+                        elif model.mimetype.startswith("application/octet-stream"):
+                            format = "base64"
+                    elif model.type == "notebook":
+                        format = "json"
+                model.format = format
+                if model.format == "text" or model.format == "json":
+                    try:
+                        model.content = bytes_content.decode("utf-8")
+                    except UnicodeDecodeError as exc:
+                        raise web.HTTPError(400, "%s is not UTF-8 encoded" % model.path, reason="bad format") from exc
+                    if model.type == "notebook":
+                        model = self._convert_to_notebook(model)
+                elif model.format == "base64":
+                    model.content = base64.encodebytes(bytes_content).decode("ascii")
             if require_hash:
                 h = hashlib.new(self.hash_algorithm)
                 h.update(bytes_content)
@@ -184,8 +191,7 @@ class WebdavContentsManager(ContentsManager):
             size=info["content_length"],
         )
 
-        if content:
-            model = self._fill_content(model, format, require_hash)
+        model = self._fill_content_hash(model, format, content, require_hash)
 
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
