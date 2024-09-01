@@ -111,15 +111,15 @@ class WebdavContentsManager(ContentsManager):
                 elif model.type == "notebook":
                     format = "json"
             model.format = format
-            buf = io.BytesIO()
-            self._client.download_fileobj(model.path, buf)
-            bytes_content = buf.getvalue() or b""
+            with io.BytesIO() as buf:
+                self._client.download_fileobj(model.path, buf)
+                bytes_content = buf.getvalue()
             if model.format == "text" or model.format == "json":
                 model.content = bytes_content.decode("utf-8")
                 if model.type == "notebook":
                     model = self._convert_to_notebook(model)
             elif model.format == "base64":
-                model.content = base64.b64encode(bytes_content).decode("ascii")
+                model.content = base64.encodebytes(bytes_content).decode("ascii")
             if require_hash:
                 h = hashlib.new(self.hash_algorithm)
                 h.update(bytes_content)
@@ -177,9 +177,98 @@ class WebdavContentsManager(ContentsManager):
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
+    def _save_notebook(self, model, path, capture_validation_error):
+        self.log.debug("Saving notebook to %s", path)
+        nb = nbformat.from_dict(model["content"])
+        self.check_and_sign(nb, path)
+        with io.BytesIO() as buf:
+            sb = io.TextIOWrapper(buf, encoding="utf-8", write_through=True)
+            nbformat.write(
+                nb,
+                sb,
+                version=nbformat.NO_CONVERT,
+                capture_validation_error=capture_validation_error,
+            )
+            buf.seek(0)
+            self._client.upload_fileobj(buf, to_path=path, overwrite=True)
+        # One checkpoint should always exist for notebooks.
+        if not self.checkpoints.list_checkpoints(path):
+            self.create_checkpoint(path)
+
+    def _save_file(self, model, path):
+        format = model.get("format")
+        content = model.get("content")
+        if format not in {"text", "base64"}:
+            raise web.HTTPError(
+                400,
+                "Must specify format of file contents as 'text' or 'base64'",
+            )
+        try:
+            if format == "text":
+                bcontent = content.encode("utf8")
+            else:
+                b64_bytes = content.encode("ascii")
+                bcontent = base64.decodebytes(b64_bytes)
+        except Exception as exc:
+            raise web.HTTPError(400, f"Encoding error saving {path}") from exc
+        with io.BytesIO(bcontent) as buf:
+            self._client.upload_fileobj(buf, to_path=path, overwrite=True)
+
+    def _save_directory(self, path):
+        if not self.allow_hidden and self.is_hidden(path):
+            raise web.HTTPError(400, "Cannot create directory %r" % path)
+        try:
+            self._client.mkdir(path)
+        except Exception as exc:
+            raise web.HTTPError(400, "Failed to create a directory: %s" % (path)) from exc
+
     def save(self, model: Dict[str, Any], path: str):
-        pymodel = WebdavFile(**model)
-        raise NotImplementedError
+        """Save the file model and return the model with no content."""
+
+        os_path = Path(self.root_dir) / path
+
+        self.log.debug("Running pre save hooks for %s", path)
+        self.run_pre_save_hooks(model=model, path=os_path)
+
+        if "type" not in model:
+            raise web.HTTPError(400, "No file type provided")
+        if "content" not in model and model["type"] != "directory":
+            raise web.HTTPError(400, "No file content provided")
+
+        if not self.allow_hidden and self.is_hidden(path):
+            raise web.HTTPError(400, f"Cannot create hidden file or directory {path!r}")
+
+        self.log.debug("Saving %s", path)
+
+        validation_error: dict[str, Any] = {}
+        try:
+            if model["type"] == "notebook":
+                self._save_notebook(model, path, validation_error)
+            elif model["type"] == "file":
+                self._save_file(model, path)
+            elif model["type"] == "directory":
+                self._save_directory(path)
+            else:
+                raise web.HTTPError(400, "Unhandled contents type: %s" % model["type"])
+        except web.HTTPError:
+            raise
+        except Exception as exc:
+            self.log.error("Error while saving file: %s %s", path, exc, exc_info=True)
+            raise web.HTTPError(500, f"Unexpected error while saving file: {path}") from exc
+
+        validation_message = None
+        if model["type"] == "notebook":
+            self.validate_notebook_model(model, validation_error=validation_error)
+            validation_message = model.get("message", None)
+
+        model = self.get(path, content=False)
+        if validation_message:
+            model["message"] = validation_message
+
+        self.log.debug("Running post save hooks for %s", path)
+        self.run_post_save_hooks(model=model, os_path=os_path)
+        self.emit(data={"action": "save", "path": path})
+        return model
     
     def delete_file(self, path: str):
         """Delete file at path."""
