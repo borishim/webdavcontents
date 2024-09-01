@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "webdavcontents"
-version = "0.1.4"
+version = "0.1.5"
 authors = [
     { name="Sangwoo Shim", email="sangwoo@makinarocks.ai" },
 ]
@@ -19,3 +19,7 @@ classifiers = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/webdavcontents"]
+
+[tool.black]
+line-length = 119
+target-version = ['py38']
