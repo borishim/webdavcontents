@@ -177,7 +177,7 @@ class WebdavContentsManager(ContentsManager):
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
-    def _save_notebook(self, model, path, capture_validation_error):
+    def _save_notebook(self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]):
         self.log.debug("Saving notebook to %s", path)
         nb = nbformat.from_dict(model["content"])
         self.check_and_sign(nb, path)
@@ -195,7 +195,7 @@ class WebdavContentsManager(ContentsManager):
         if not self.checkpoints.list_checkpoints(path):
             self.create_checkpoint(path)
 
-    def _save_file(self, model, path):
+    def _save_file(self, model: Dict[str, Any], path: str):
         format = model.get("format")
         content = model.get("content")
         if format not in {"text", "base64"}:
@@ -214,7 +214,7 @@ class WebdavContentsManager(ContentsManager):
         with io.BytesIO(bcontent) as buf:
             self._client.upload_fileobj(buf, to_path=path, overwrite=True)
 
-    def _save_directory(self, path):
+    def _save_directory(self, path: str):
         if not self.allow_hidden and self.is_hidden(path):
             raise web.HTTPError(400, "Cannot create directory %r" % path)
         try:
