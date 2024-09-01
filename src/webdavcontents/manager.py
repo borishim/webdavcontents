@@ -4,11 +4,12 @@ import io
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, cast
 
 import nbformat
 import webdav4
 from jupyter_server import _tz as tz
+from jupyter_server.services.contents.checkpoints import Checkpoints
 from jupyter_server.services.contents.filecheckpoints import GenericFileCheckpoints
 from jupyter_server.services.contents.manager import ContentsManager
 from tornado import web
@@ -63,10 +64,10 @@ class WebdavContentsManager(ContentsManager):
         default_value="sha256",
     ).tag(config=True, env="JPYNB_WEBDAV_HASH_ALGORITHM")
 
-    def _checkpoints_class_default(self):
+    def _checkpoints_class_default(self) -> Checkpoints:
         return GenericFileCheckpoints
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self._client = Client(self.base_url, auth=(self.user_id, self.password))
 
@@ -136,7 +137,7 @@ class WebdavContentsManager(ContentsManager):
         type: Optional[str] = None,
         format: Optional[str] = None,
         require_hash: bool = False,
-    ):
+    ) -> Dict[str, Any]:
         """Takes a path for an entity and returns its model
 
         Parameters
@@ -186,7 +187,7 @@ class WebdavContentsManager(ContentsManager):
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
-    def _save_notebook(self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]):
+    def _save_notebook(self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]) -> None:
         self.log.debug("Saving notebook to %s", path)
         nb = nbformat.from_dict(model["content"])
         self.check_and_sign(nb, path)
@@ -204,7 +205,7 @@ class WebdavContentsManager(ContentsManager):
         if not self.checkpoints.list_checkpoints(path):
             self.create_checkpoint(path)
 
-    def _save_file(self, model: Dict[str, Any], path: str):
+    def _save_file(self, model: Dict[str, Any], path: str) -> None:
         format = model.get("format")
         content = model.get("content")
         if format not in {"text", "base64"}:
@@ -223,7 +224,7 @@ class WebdavContentsManager(ContentsManager):
         with io.BytesIO(bcontent) as buf:
             self._client.upload_fileobj(buf, to_path=path, overwrite=True)
 
-    def _save_directory(self, path: str):
+    def _save_directory(self, path: str) -> None:
         if not self.allow_hidden and self.is_hidden(path):
             raise web.HTTPError(400, "Cannot create directory %r" % path)
         try:
@@ -231,7 +232,7 @@ class WebdavContentsManager(ContentsManager):
         except Exception as exc:
             raise web.HTTPError(400, "Failed to create a directory: %s" % (path)) from exc
 
-    def save(self, model: Dict[str, Any], path: str):
+    def save(self, model: Dict[str, Any], path: str) -> Dict[str, Any]:
         """Save the file model and return the model with no content."""
 
         os_path = Path(self.root_dir) / path
@@ -249,7 +250,7 @@ class WebdavContentsManager(ContentsManager):
 
         self.log.debug("Saving %s", path)
 
-        validation_error: dict[str, Any] = {}
+        validation_error: Dict[str, Any] = {}
         try:
             if model["type"] == "notebook":
                 self._save_notebook(model, path, validation_error)
@@ -279,7 +280,7 @@ class WebdavContentsManager(ContentsManager):
         self.emit(data={"action": "save", "path": path})
         return model
 
-    def delete_file(self, path: str):
+    def delete_file(self, path: str) -> None:
         """Delete file at path."""
         if not self.allow_hidden and self.is_hidden(path):
             raise web.HTTPError(400, f"Cannot delete file or directory {path!r}")
@@ -288,7 +289,7 @@ class WebdavContentsManager(ContentsManager):
         except Exception as exc:
             raise web.HTTPError(400, f"Cannot delete file or directory {path!r}") from exc
 
-    def rename_file(self, old_path: str, new_path: str):
+    def rename_file(self, old_path: str, new_path: str) -> None:
         """Rename a file."""
         if new_path == old_path:
             return
@@ -315,7 +316,7 @@ class WebdavContentsManager(ContentsManager):
             Whether the file exists.
         """
         try:
-            return self._client.isfile(path)
+            return cast(bool, self._client.isfile(path))
         except webdav4.client.ResourceNotFound:
             return False
 
@@ -336,7 +337,7 @@ class WebdavContentsManager(ContentsManager):
             Whether the path is indeed a directory.
         """
         try:
-            return self._client.isdir(path)
+            return cast(bool, self._client.isdir(path))
         except webdav4.client.ResourceNotFound:
             return False
 
@@ -354,5 +355,4 @@ class WebdavContentsManager(ContentsManager):
         hidden : bool
             Whether the path exists and is hidden.
         """
-        if any(part.startswith(".") for part in Path(path).parts):
-            return True
+        return any(part.startswith(".") for part in Path(path).parts)
