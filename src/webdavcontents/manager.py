@@ -1,19 +1,19 @@
+import base64
+import hashlib
+import io
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-import base64
-import hashlib
-import io
 
 import nbformat
+import webdav4
 from jupyter_server import _tz as tz
-from jupyter_server.services.contents.manager import ContentsManager
 from jupyter_server.services.contents.filecheckpoints import GenericFileCheckpoints
+from jupyter_server.services.contents.manager import ContentsManager
 from tornado import web
 from traitlets import Unicode
 from webdav4.client import Client
-import webdav4
 
 
 @dataclass
@@ -87,9 +87,7 @@ class WebdavContentsManager(ContentsManager):
         except Exception as exc:
             raise web.HTTPError(400, f"Unreadable Notebook: {model.path!r}") from exc
 
-    def _fill_content(
-        self, model: WebdavFile, format: Optional[str], require_hash: bool
-    ) -> WebdavFile:
+    def _fill_content(self, model: WebdavFile, format: Optional[str], require_hash: bool) -> WebdavFile:
         if model.type == "directory":
             model.format = "json"
             model.content = []
@@ -98,10 +96,8 @@ class WebdavContentsManager(ContentsManager):
                     name=info["display_name"],
                     path=info["name"],
                     type=info["type"],
-                    created=info["created"]
-                    or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                    last_modified=info["modified"]
-                    or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                    created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                    last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
                     mimetype=info["content_type"],
                     size=info["content_length"],
                 )
@@ -190,9 +186,7 @@ class WebdavContentsManager(ContentsManager):
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
-    def _save_notebook(
-        self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]
-    ):
+    def _save_notebook(self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]):
         self.log.debug("Saving notebook to %s", path)
         nb = nbformat.from_dict(model["content"])
         self.check_and_sign(nb, path)
@@ -235,9 +229,7 @@ class WebdavContentsManager(ContentsManager):
         try:
             self._client.mkdir(path)
         except Exception as exc:
-            raise web.HTTPError(
-                400, "Failed to create a directory: %s" % (path)
-            ) from exc
+            raise web.HTTPError(400, "Failed to create a directory: %s" % (path)) from exc
 
     def save(self, model: Dict[str, Any], path: str):
         """Save the file model and return the model with no content."""
@@ -271,9 +263,7 @@ class WebdavContentsManager(ContentsManager):
             raise
         except Exception as exc:
             self.log.error("Error while saving file: %s %s", path, exc, exc_info=True)
-            raise web.HTTPError(
-                500, f"Unexpected error while saving file: {path}"
-            ) from exc
+            raise web.HTTPError(500, f"Unexpected error while saving file: {path}") from exc
 
         validation_message = None
         if model["type"] == "notebook":
@@ -296,24 +286,18 @@ class WebdavContentsManager(ContentsManager):
         try:
             self._client.remove(path)
         except Exception as exc:
-            raise web.HTTPError(
-                400, f"Cannot delete file or directory {path!r}"
-            ) from exc
+            raise web.HTTPError(400, f"Cannot delete file or directory {path!r}") from exc
 
     def rename_file(self, old_path: str, new_path: str):
         """Rename a file."""
         if new_path == old_path:
             return
-        if not self.allow_hidden and (
-            self.is_hidden(old_path) or self.is_hidden(new_path)
-        ):
+        if not self.allow_hidden and (self.is_hidden(old_path) or self.is_hidden(new_path)):
             raise web.HTTPError(400, f"Cannot rename file or directory {old_path!r}")
         try:
             self._client.move(old_path, new_path)
         except Exception as exc:
-            raise web.HTTPError(
-                500, f"Unknown error renaming file: {old_path!r}"
-            ) from exc
+            raise web.HTTPError(500, f"Unknown error renaming file: {old_path!r}") from exc
 
     def file_exists(self, path: str = "") -> bool:
         """Returns True if the file exists, else returns False.
