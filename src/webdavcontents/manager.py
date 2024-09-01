@@ -44,7 +44,7 @@ class WebdavContentsManager(ContentsManager):
         allow_none=True,
         default_value=None,
     ).tag(config=True, env="JPYNB_WEBDAV_USER_ID")
-    
+
     password = Unicode(
         help="WebDAV password",
         allow_none=True,
@@ -71,7 +71,9 @@ class WebdavContentsManager(ContentsManager):
         self._client = Client(self.base_url, auth=(self.user_id, self.password))
 
     @staticmethod
-    def _convert_to_notebook(model: WebdavFile, as_version: int = 4, capture_validation_error: bool = None) -> WebdavFile:
+    def _convert_to_notebook(
+        model: WebdavFile, as_version: int = 4, capture_validation_error: bool = None
+    ) -> WebdavFile:
         """Convert the content of a text file to the notebook content."""
 
         assert model.format == "json"
@@ -85,7 +87,9 @@ class WebdavContentsManager(ContentsManager):
         except Exception as exc:
             raise web.HTTPError(400, f"Unreadable Notebook: {model.path!r}") from exc
 
-    def _fill_content(self, model: WebdavFile, format: Optional[str], require_hash: bool) -> WebdavFile:
+    def _fill_content(
+        self, model: WebdavFile, format: Optional[str], require_hash: bool
+    ) -> WebdavFile:
         if model.type == "directory":
             model.format = "json"
             model.content = []
@@ -94,8 +98,10 @@ class WebdavContentsManager(ContentsManager):
                     name=info["display_name"],
                     path=info["name"],
                     type=info["type"],
-                    created=info["created"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
-                    last_modified=info["modified"] or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                    created=info["created"]
+                    or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
+                    last_modified=info["modified"]
+                    or datetime(1970, 1, 1, 0, 0, tzinfo=tz.UTC),
                     mimetype=info["content_type"],
                     size=info["content_length"],
                 )
@@ -127,7 +133,14 @@ class WebdavContentsManager(ContentsManager):
                 model.hash_algorithm = self.hash_algorithm
         return model
 
-    def get(self, path: str, content: bool = True, type: Optional[str] = None, format: Optional[str] = None, require_hash: bool = False):
+    def get(
+        self,
+        path: str,
+        content: bool = True,
+        type: Optional[str] = None,
+        format: Optional[str] = None,
+        require_hash: bool = False,
+    ):
         """Takes a path for an entity and returns its model
 
         Parameters
@@ -177,7 +190,9 @@ class WebdavContentsManager(ContentsManager):
         self.emit(data={"action": "get", "path": path})
         return asdict(model)
 
-    def _save_notebook(self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]):
+    def _save_notebook(
+        self, model: Dict[str, Any], path: str, capture_validation_error: Dict[str, Any]
+    ):
         self.log.debug("Saving notebook to %s", path)
         nb = nbformat.from_dict(model["content"])
         self.check_and_sign(nb, path)
@@ -220,7 +235,9 @@ class WebdavContentsManager(ContentsManager):
         try:
             self._client.mkdir(path)
         except Exception as exc:
-            raise web.HTTPError(400, "Failed to create a directory: %s" % (path)) from exc
+            raise web.HTTPError(
+                400, "Failed to create a directory: %s" % (path)
+            ) from exc
 
     def save(self, model: Dict[str, Any], path: str):
         """Save the file model and return the model with no content."""
@@ -254,7 +271,9 @@ class WebdavContentsManager(ContentsManager):
             raise
         except Exception as exc:
             self.log.error("Error while saving file: %s %s", path, exc, exc_info=True)
-            raise web.HTTPError(500, f"Unexpected error while saving file: {path}") from exc
+            raise web.HTTPError(
+                500, f"Unexpected error while saving file: {path}"
+            ) from exc
 
         validation_message = None
         if model["type"] == "notebook":
@@ -269,7 +288,7 @@ class WebdavContentsManager(ContentsManager):
         self.run_post_save_hooks(model=model, os_path=os_path)
         self.emit(data={"action": "save", "path": path})
         return model
-    
+
     def delete_file(self, path: str):
         """Delete file at path."""
         if not self.allow_hidden and self.is_hidden(path):
@@ -277,7 +296,9 @@ class WebdavContentsManager(ContentsManager):
         try:
             self._client.remove(path)
         except Exception as exc:
-            raise web.HTTPError(400, f"Cannot delete file or directory {path!r}") from exc
+            raise web.HTTPError(
+                400, f"Cannot delete file or directory {path!r}"
+            ) from exc
 
     def rename_file(self, old_path: str, new_path: str):
         """Rename a file."""
@@ -290,7 +311,9 @@ class WebdavContentsManager(ContentsManager):
         try:
             self._client.move(old_path, new_path)
         except Exception as exc:
-            raise web.HTTPError(500, f"Unknown error renaming file: {old_path!r}") from exc
+            raise web.HTTPError(
+                500, f"Unknown error renaming file: {old_path!r}"
+            ) from exc
 
     def file_exists(self, path: str = "") -> bool:
         """Returns True if the file exists, else returns False.
