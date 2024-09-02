@@ -16,6 +16,10 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "jupyterlab>=4.2",
+    "webdav4>=0.10",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/webdavcontents"]
