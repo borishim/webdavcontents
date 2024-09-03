@@ -13,7 +13,7 @@ from jupyter_server.services.contents.checkpoints import Checkpoints
 from jupyter_server.services.contents.filecheckpoints import GenericFileCheckpoints
 from jupyter_server.services.contents.manager import ContentsManager
 from tornado import web
-from traitlets import Unicode
+from traitlets import Bool, Unicode
 from webdav4.client import Client
 
 
@@ -64,12 +64,34 @@ class WebdavContentsManager(ContentsManager):
         default_value="sha256",
     ).tag(config=True, env="JPYNB_WEBDAV_HASH_ALGORITHM")
 
+    tls_verify = Bool(
+        help="Whether to verify SSL/TLS certification host",
+        default_value=False,
+    ).tag(config=True, env="JPYNB_WEBDAV_TLS_VERIFY")
+
+    tls_key_file = Unicode(
+        help="WebDAV SSL/TLS key file",
+        allow_none=True,
+        default_value=None,
+    ).tag(config=True, env="JPYNB_WEBDAV_TLS_KEY_FILE")
+
+    tls_cert_file = Unicode(
+        help="WebDAV SSL/TLS cert file",
+        allow_none=True,
+        default_value=None,
+    ).tag(config=True, env="JPYNB_WEBDAV_TLS_CERT_FILE")
+
     def _checkpoints_class_default(self) -> Checkpoints:
         return GenericFileCheckpoints
 
     def __init__(self, *args, **kwargs):  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
-        self._client = Client(self.base_url, auth=(self.user_id, self.password))
+        client_opts = {"verify": self.tls_verify}
+        if self.tls_cert_file:
+            client_opts["cert"] = self.tls_cert_file
+            if self.tls_key_file:
+                client_opts["cert"] = (self.tls_cert_file, self.tls_key_file)
+        self._client = Client(self.base_url, auth=(self.user_id, self.password), **client_opts)
 
     @staticmethod
     def _convert_to_notebook(
