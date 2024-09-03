@@ -93,8 +93,9 @@ class WebdavContentsManager(ContentsManager):
     ) -> WebdavFile:
         if model.type == "directory":
             model.format = None
-            model.content = []
+            model.content = None
             if require_content:
+                model.content = []
                 if not format:
                     format = "json"
                 model.format = format
